@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { EthereumSepolia, EthereumHolesky } from '@particle-network/chains';
+import { EthereumSepolia } from '@particle-network/chains';
 import { AuthCoreContextProvider } from '@particle-network/auth-core-modal';
 import App from './App'
 

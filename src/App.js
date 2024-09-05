@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useEthereum, useConnect, useAuthCore,  } from '@particle-network/auth-core-modal';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useEthereum, useConnect, useAuthCore } from '@particle-network/auth-core-modal';
 import { EthereumSepolia } from '@particle-network/chains';
 import { AAWrapProvider, SmartAccount, SendTransactionMode } from '@particle-network/aa';
 import { ethers } from "ethers";
@@ -8,68 +8,64 @@ import { abi } from "./constants/abi";
 import "../src/App.css"
 import { contractAddress } from "./constants/address";
 
-
 const App = () => {
   const { provider } = useEthereum();
   const { connect, disconnect } = useConnect();
   const { userInfo } = useAuthCore();
 
-  const smartAccount = new SmartAccount(provider, {
-    projectId: process.env.REACT_APP_PROJECT_ID || 'undefined',
-    clientKey: process.env.REACT_APP_CLIENT_KEY || 'undefined',
-    appId: process.env.REACT_APP_APP_ID || 'undefined',
-    aaOptions: {
-      accountContracts: {
-        SIMPLE: [{ chainIds: [EthereumSepolia.id], version: '1.0.0' }],
-    }
-  }});
-
-  const customProvider = new ethers.BrowserProvider(
-    new AAWrapProvider(smartAccount, SendTransactionMode.Gasless),
-    "any"
-  );
-  
   const [balance, setBalance] = useState(0);
   const [address, setAddress] = useState("");
-
+  const [customProvider, setCustomProvider] = useState(null);
 
   useEffect(() => {
-    if (userInfo) {
+    const initializeProvider = async () => {
+      const smartAccount = new SmartAccount(provider, {
+        projectId: process.env.REACT_APP_PROJECT_ID || 'undefined',
+        clientKey: process.env.REACT_APP_CLIENT_KEY || 'undefined',
+        appId: process.env.REACT_APP_APP_ID || 'undefined',
+        aaOptions: {
+          accountContracts: {
+            SIMPLE: [{ chainIds: [EthereumSepolia.id], version: '1.0.0' }],
+          }
+        }
+      });
+
+      const newCustomProvider = new ethers.BrowserProvider(
+        new AAWrapProvider(smartAccount, SendTransactionMode.Gasless),
+        "any"
+      );
+
+      setCustomProvider(newCustomProvider);
+
+      const addr = await smartAccount.getAddress();
+      setAddress(addr.toString());
+    };
+
+    if (provider && userInfo) {
+      initializeProvider();
+    }
+  }, [provider, userInfo]);
+
+  const fetchBalance = useCallback(async () => {
+    if (!customProvider || !address) {
+      console.log("Provider or address not initialized yet");
+      return;
+    }
+
+    try {
+      const contract = new ethers.Contract(contractAddress, abi, customProvider);
+      const balance = await contract.balanceOf(address);
+      setBalance(balance.toString());
+    } catch (error) {
+      console.error("Error fetching balance:", error);
+    }
+  }, [customProvider, address]);
+
+  useEffect(() => {
+    if (userInfo && customProvider && address) {
       fetchBalance();
     }
-  }, [userInfo, smartAccount, customProvider]);
-
-  const fetchBalance = async () => {
-    if (!customProvider) {
-      console.log("provider not initialized yet");
-      return;
-    }
-
-    const addr = await smartAccount.getAddress();
-    console.log(addr.toString());
-    setAddress(addr);
-
-    if (!address) {
-      console.log("address not initialized yet");
-      return;
-    }
-
-    console.log(contractAddress);
-    console.log(customProvider);
-    
-    const contract = new ethers.Contract(
-      contractAddress,
-      abi,
-      customProvider
-    );
-
-    // Read message from smart contract
-    // const balance = await contract.balanceOf(addr.toString());
-    const balance = await contract.balanceOf(address);
-    console.log(balance.toString());
-    
-    setBalance(balance.toString());
-  };
+  }, [userInfo, customProvider, address, fetchBalance]);
 
   const handleLogin = async (authType) => {
     if (!userInfo) {
